@@ -9,9 +9,11 @@ import (
 
 	"pentagi/pkg/graphiti"
 	obs "pentagi/pkg/observability"
+
+	"github.com/sirupsen/logrus"
 )
 
-type graphitiSearcher interface {
+type GraphitiSearcher interface {
 	IsEnabled() bool
 	TemporalWindowSearch(ctx context.Context, req graphiti.TemporalSearchRequest) (*graphiti.TemporalSearchResponse, error)
 	EntityRelationshipsSearch(ctx context.Context, req graphiti.EntityRelationshipSearchRequest) (*graphiti.EntityRelationshipSearchResponse, error)
@@ -52,21 +54,21 @@ var (
 	}
 )
 
-// GraphitiSearchTool provides search access to Graphiti knowledge graph
-type GraphitiSearchTool struct {
+// graphitiSearchTool provides search access to Graphiti knowledge graph
+type graphitiSearchTool struct {
 	flowID         int64
 	taskID         *int64
 	subtaskID      *int64
-	graphitiClient graphitiSearcher
+	graphitiClient GraphitiSearcher
 }
 
 // NewGraphitiSearchTool creates a new Graphiti search tool
 func NewGraphitiSearchTool(
 	flowID int64,
 	taskID, subtaskID *int64,
-	graphitiClient graphitiSearcher,
-) *GraphitiSearchTool {
-	return &GraphitiSearchTool{
+	graphitiClient GraphitiSearcher,
+) Tool {
+	return &graphitiSearchTool{
 		flowID:         flowID,
 		taskID:         taskID,
 		subtaskID:      subtaskID,
@@ -75,18 +77,24 @@ func NewGraphitiSearchTool(
 }
 
 // IsAvailable checks if the tool is available
-func (t *GraphitiSearchTool) IsAvailable() bool {
+func (t *graphitiSearchTool) IsAvailable() bool {
 	return t.graphitiClient != nil && t.graphitiClient.IsEnabled()
 }
 
 // Handle executes the search based on search_type
-func (t *GraphitiSearchTool) Handle(ctx context.Context, name string, args json.RawMessage) (string, error) {
+func (t *graphitiSearchTool) Handle(ctx context.Context, name string, args json.RawMessage) (string, error) {
 	if !t.IsAvailable() {
 		return "Graphiti knowledge graph is not enabled. No historical context or memory data is available for this search.", nil
 	}
 
+	logger := logrus.WithContext(ctx).WithFields(enrichLogrusFields(t.flowID, t.taskID, t.subtaskID, logrus.Fields{
+		"tool": name,
+		"args": string(args),
+	}))
+
 	var searchArgs GraphitiSearchAction
 	if err := json.Unmarshal(args, &searchArgs); err != nil {
+		logger.WithError(err).Error("failed to unmarshal search arguments")
 		return "", fmt.Errorf("failed to unmarshal search arguments: %w", err)
 	}
 
@@ -94,9 +102,11 @@ func (t *GraphitiSearchTool) Handle(ctx context.Context, name string, args json.
 
 	// Validate required parameters
 	if searchArgs.Query == "" {
+		logger.Error("query parameter is required")
 		return "", fmt.Errorf("query parameter is required")
 	}
 	if searchArgs.SearchType == "" {
+		logger.Error("search_type parameter is required")
 		return "", fmt.Errorf("search_type parameter is required")
 	}
 
@@ -111,28 +121,39 @@ func (t *GraphitiSearchTool) Handle(ctx context.Context, name string, args json.
 	groupID := fmt.Sprintf("flow-%d", t.flowID)
 
 	// Route to appropriate search method
+	var (
+		err    error
+		result string
+	)
 	switch searchArgs.SearchType {
 	case "temporal_window":
-		return t.handleTemporalWindowSearch(ctx, groupID, searchArgs, observationObject)
+		result, err = t.handleTemporalWindowSearch(ctx, groupID, searchArgs, observationObject)
 	case "entity_relationships":
-		return t.handleEntityRelationshipsSearch(ctx, groupID, searchArgs, observationObject)
+		result, err = t.handleEntityRelationshipsSearch(ctx, groupID, searchArgs, observationObject)
 	case "diverse_results":
-		return t.handleDiverseResultsSearch(ctx, groupID, searchArgs, observationObject)
+		result, err = t.handleDiverseResultsSearch(ctx, groupID, searchArgs, observationObject)
 	case "episode_context":
-		return t.handleEpisodeContextSearch(ctx, groupID, searchArgs, observationObject)
+		result, err = t.handleEpisodeContextSearch(ctx, groupID, searchArgs, observationObject)
 	case "successful_tools":
-		return t.handleSuccessfulToolsSearch(ctx, groupID, searchArgs, observationObject)
+		result, err = t.handleSuccessfulToolsSearch(ctx, groupID, searchArgs, observationObject)
 	case "recent_context":
-		return t.handleRecentContextSearch(ctx, groupID, searchArgs, observationObject)
+		result, err = t.handleRecentContextSearch(ctx, groupID, searchArgs, observationObject)
 	case "entity_by_label":
-		return t.handleEntityByLabelSearch(ctx, groupID, searchArgs, observationObject)
+		result, err = t.handleEntityByLabelSearch(ctx, groupID, searchArgs, observationObject)
 	default:
-		return "", fmt.Errorf("unknown search_type: %s", searchArgs.SearchType)
+		err = fmt.Errorf("unknown search_type: %s", searchArgs.SearchType)
 	}
+
+	if err != nil {
+		logger.WithError(err).Errorf("failed to perform graphiti search '%s'", searchArgs.SearchType)
+		return "", err
+	}
+
+	return result, nil
 }
 
 // handleTemporalWindowSearch performs time-bounded search
-func (t *GraphitiSearchTool) handleTemporalWindowSearch(
+func (t *graphitiSearchTool) handleTemporalWindowSearch(
 	ctx context.Context,
 	groupID string,
 	args GraphitiSearchAction,
@@ -180,7 +201,7 @@ func (t *GraphitiSearchTool) handleTemporalWindowSearch(
 }
 
 // handleEntityRelationshipsSearch finds relationships from a center node
-func (t *GraphitiSearchTool) handleEntityRelationshipsSearch(
+func (t *graphitiSearchTool) handleEntityRelationshipsSearch(
 	ctx context.Context,
 	groupID string,
 	args GraphitiSearchAction,
@@ -233,7 +254,7 @@ func (t *GraphitiSearchTool) handleEntityRelationshipsSearch(
 }
 
 // handleDiverseResultsSearch gets diverse, non-redundant results
-func (t *GraphitiSearchTool) handleDiverseResultsSearch(
+func (t *graphitiSearchTool) handleDiverseResultsSearch(
 	ctx context.Context,
 	groupID string,
 	args GraphitiSearchAction,
@@ -269,7 +290,7 @@ func (t *GraphitiSearchTool) handleDiverseResultsSearch(
 }
 
 // handleEpisodeContextSearch searches through agent responses and tool execution records
-func (t *GraphitiSearchTool) handleEpisodeContextSearch(
+func (t *graphitiSearchTool) handleEpisodeContextSearch(
 	ctx context.Context,
 	groupID string,
 	args GraphitiSearchAction,
@@ -296,7 +317,7 @@ func (t *GraphitiSearchTool) handleEpisodeContextSearch(
 }
 
 // handleSuccessfulToolsSearch finds successful tool executions and attack patterns
-func (t *GraphitiSearchTool) handleSuccessfulToolsSearch(
+func (t *graphitiSearchTool) handleSuccessfulToolsSearch(
 	ctx context.Context,
 	groupID string,
 	args GraphitiSearchAction,
@@ -329,7 +350,7 @@ func (t *GraphitiSearchTool) handleSuccessfulToolsSearch(
 }
 
 // handleRecentContextSearch retrieves recent relevant context
-func (t *GraphitiSearchTool) handleRecentContextSearch(
+func (t *graphitiSearchTool) handleRecentContextSearch(
 	ctx context.Context,
 	groupID string,
 	args GraphitiSearchAction,
@@ -365,7 +386,7 @@ func (t *GraphitiSearchTool) handleRecentContextSearch(
 }
 
 // handleEntityByLabelSearch searches for entities by label/type
-func (t *GraphitiSearchTool) handleEntityByLabelSearch(
+func (t *graphitiSearchTool) handleEntityByLabelSearch(
 	ctx context.Context,
 	groupID string,
 	args GraphitiSearchAction,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -98,6 +99,23 @@ func buildMetadata(
 	}
 }
 
+func wrapMetadataWithStopReason(metadata langfuse.Metadata, resp *llms.ContentResponse) langfuse.Metadata {
+	if resp == nil || len(resp.Choices) == 0 {
+		return metadata
+	}
+
+	newMetadata := make(langfuse.Metadata, len(metadata))
+	maps.Copy(newMetadata, metadata)
+
+	for _, choice := range resp.Choices {
+		if choice.StopReason != "" {
+			newMetadata["stop_reason"] = choice.StopReason
+		}
+	}
+
+	return newMetadata
+}
+
 func WrapGenerateFromSinglePrompt(
 	ctx context.Context,
 	provider Provider,
@@ -107,7 +125,7 @@ func WrapGenerateFromSinglePrompt(
 	options ...llms.CallOption,
 ) (string, error) {
 	ctx, observation := obs.Observer.NewObservation(ctx)
-	model := provider.Model(opt)
+	modelWithPrefix := provider.ModelWithPrefix(opt)
 	messages := []llms.MessageContent{
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	}
@@ -117,7 +135,7 @@ func WrapGenerateFromSinglePrompt(
 		langfuse.WithGenerationMetadata(metadata),
 		langfuse.WithGenerationInput(messages),
 		langfuse.WithGenerationTools(extractToolsFromOptions(options...)),
-		langfuse.WithGenerationModel(model),
+		langfuse.WithGenerationModel(modelWithPrefix),
 		langfuse.WithGenerationModelParameters(langfuse.GetLangchainModelParameters(options)),
 	)
 
@@ -131,14 +149,17 @@ func WrapGenerateFromSinglePrompt(
 		resp *llms.ContentResponse
 	)
 
+	// Inject prefixed model name into call options
+	callOptions := append(options, llms.WithModel(modelWithPrefix))
+
 	for idx := range MaxTooManyRequestsRetries {
-		resp, err = llm.GenerateContent(ctx, []llms.MessageContent{msg}, options...)
+		resp, err = llm.GenerateContent(ctx, []llms.MessageContent{msg}, callOptions...)
 		if err != nil {
 			if isTooManyRequestsError(err) {
 				_, observation = generation.Observation(ctx)
 				observation.Event(
 					langfuse.WithEventName(fmt.Sprintf("%s-generation-error", provider.Type().String())),
-					langfuse.WithEventMetadata(metadata),
+					langfuse.WithEventMetadata(wrapMetadataWithStopReason(metadata, resp)),
 					langfuse.WithEventInput(messages),
 					langfuse.WithEventStatus("TOO_MANY_REQUESTS"),
 					langfuse.WithEventOutput(err.Error()),
@@ -157,6 +178,7 @@ func WrapGenerateFromSinglePrompt(
 
 	if err != nil {
 		generation.End(
+			langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 			langfuse.WithGenerationStatus(err.Error()),
 			langfuse.WithGenerationLevel(langfuse.ObservationLevelError),
 		)
@@ -167,6 +189,7 @@ func WrapGenerateFromSinglePrompt(
 	if len(choices) < 1 {
 		err = fmt.Errorf("empty response from model")
 		generation.End(
+			langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 			langfuse.WithGenerationStatus(err.Error()),
 			langfuse.WithGenerationLevel(langfuse.ObservationLevelError),
 		)
@@ -180,6 +203,7 @@ func WrapGenerateFromSinglePrompt(
 		usage.UpdateCost(provider.GetPriceInfo(opt))
 
 		generation.End(
+			langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 			langfuse.WithGenerationOutput(choice),
 			langfuse.WithGenerationStatus("success"),
 			langfuse.WithGenerationUsage(&langfuse.GenerationUsage{
@@ -205,6 +229,7 @@ func WrapGenerateFromSinglePrompt(
 
 	respOutput := strings.Join(choicesOutput, "\n-----\n")
 	generation.End(
+		langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 		langfuse.WithGenerationOutput(resp.Choices),
 		langfuse.WithGenerationStatus("success"),
 		langfuse.WithGenerationUsage(&langfuse.GenerationUsage{
@@ -228,13 +253,14 @@ func WrapGenerateContent(
 	options ...llms.CallOption,
 ) (*llms.ContentResponse, error) {
 	ctx, observation := obs.Observer.NewObservation(ctx)
+	modelWithPrefix := provider.ModelWithPrefix(opt)
 	metadata := buildMetadata(provider, opt, messages, options...)
 	generation := observation.Generation(
 		langfuse.WithGenerationName(fmt.Sprintf("%s-generation-ex", provider.Type().String())),
 		langfuse.WithGenerationMetadata(metadata),
 		langfuse.WithGenerationInput(messages),
 		langfuse.WithGenerationTools(extractToolsFromOptions(options...)),
-		langfuse.WithGenerationModel(provider.Model(opt)),
+		langfuse.WithGenerationModel(modelWithPrefix),
 		langfuse.WithGenerationModelParameters(langfuse.GetLangchainModelParameters(options)),
 	)
 
@@ -243,14 +269,17 @@ func WrapGenerateContent(
 		resp *llms.ContentResponse
 	)
 
+	// Inject prefixed model name into call options
+	callOptions := append(options, llms.WithModel(modelWithPrefix))
+
 	for idx := range MaxTooManyRequestsRetries {
-		resp, err = fn(ctx, messages, options...)
+		resp, err = fn(ctx, messages, callOptions...)
 		if err != nil {
 			if isTooManyRequestsError(err) {
 				_, observation = generation.Observation(ctx)
 				observation.Event(
 					langfuse.WithEventName(fmt.Sprintf("%s-generation-error", provider.Type().String())),
-					langfuse.WithEventMetadata(metadata),
+					langfuse.WithEventMetadata(wrapMetadataWithStopReason(metadata, resp)),
 					langfuse.WithEventInput(messages),
 					langfuse.WithEventStatus("TOO_MANY_REQUESTS"),
 					langfuse.WithEventOutput(err.Error()),
@@ -269,6 +298,7 @@ func WrapGenerateContent(
 
 	if err != nil {
 		generation.End(
+			langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 			langfuse.WithGenerationStatus(err.Error()),
 			langfuse.WithGenerationLevel(langfuse.ObservationLevelError),
 		)
@@ -278,6 +308,7 @@ func WrapGenerateContent(
 	if len(resp.Choices) < 1 {
 		err = fmt.Errorf("empty response from model")
 		generation.End(
+			langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 			langfuse.WithGenerationStatus(err.Error()),
 			langfuse.WithGenerationLevel(langfuse.ObservationLevelError),
 		)
@@ -290,6 +321,7 @@ func WrapGenerateContent(
 		usage.UpdateCost(provider.GetPriceInfo(opt))
 
 		generation.End(
+			langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 			langfuse.WithGenerationOutput(choice),
 			langfuse.WithGenerationStatus("success"),
 			langfuse.WithGenerationUsage(&langfuse.GenerationUsage{
@@ -312,6 +344,7 @@ func WrapGenerateContent(
 	usage.UpdateCost(provider.GetPriceInfo(opt))
 
 	generation.End(
+		langfuse.WithGenerationMetadata(wrapMetadataWithStopReason(metadata, resp)),
 		langfuse.WithGenerationOutput(resp.Choices),
 		langfuse.WithGenerationStatus("success"),
 		langfuse.WithGenerationUsage(&langfuse.GenerationUsage{

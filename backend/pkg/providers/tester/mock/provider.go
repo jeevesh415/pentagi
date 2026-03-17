@@ -68,6 +68,11 @@ func (p *Provider) Model(opt pconfig.ProviderOptionsType) string {
 	return p.modelName
 }
 
+// ModelWithPrefix implements provider.Provider
+func (p *Provider) ModelWithPrefix(opt pconfig.ProviderOptionsType) string {
+	return p.Model(opt)
+}
+
 // GetUsage implements provider.Provider
 func (p *Provider) GetUsage(info map[string]any) pconfig.CallUsage {
 	return pconfig.CallUsage{Input: 100, Output: 50} // Mock token counts
@@ -303,9 +308,8 @@ func (p *Provider) handleStreamingResponse(
 		// Add reasoning content to first chunk
 		if i == 0 && !thinking.IsEmpty() {
 			chunk.Reasoning = &reasoning.ContentReasoning{
-				Content:         thinking.Content,
-				Signature:       thinking.Signature,
-				RedactedContent: thinking.RedactedContent,
+				Content:   thinking.Content,
+				Signature: thinking.Signature,
 			}
 		}
 

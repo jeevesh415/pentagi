@@ -109,12 +109,18 @@ func (p *openaiProvider) GetModels() pconfig.ModelsConfig {
 }
 
 func (p *openaiProvider) Model(opt pconfig.ProviderOptionsType) string {
-	opts := llms.CallOptions{Model: OpenAIAgentModel}
+	model := OpenAIAgentModel
+	opts := llms.CallOptions{Model: &model}
 	for _, option := range p.providerConfig.GetOptionsForType(opt) {
 		option(&opts)
 	}
 
-	return opts.Model
+	return opts.GetModel()
+}
+
+func (p *openaiProvider) ModelWithPrefix(opt pconfig.ProviderOptionsType) string {
+	// OpenAI provider doesn't need prefix support (passthrough mode in LiteLLM)
+	return p.Model(opt)
 }
 
 func (p *openaiProvider) Call(

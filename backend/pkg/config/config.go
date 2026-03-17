@@ -5,10 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"strings"
 
 	"github.com/caarlos0/env/v10"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/vxcontrol/cloud/anonymizer/patterns"
 	"github.com/vxcontrol/cloud/sdk"
 )
 
@@ -89,7 +92,8 @@ type Config struct {
 
 	// Ollama LLM provider
 	OllamaServerURL               string `env:"OLLAMA_SERVER_URL"`
-	OllamaServerModel             string `env:"OLLAMA_SERVER_MODEL" envDefault:"llama3.1:8b-instruct-q8_0"`
+	OllamaServerAPIKey            string `env:"OLLAMA_SERVER_API_KEY"`
+	OllamaServerModel             string `env:"OLLAMA_SERVER_MODEL"`
 	OllamaServerConfig            string `env:"OLLAMA_SERVER_CONFIG_PATH"`
 	OllamaServerPullModelsTimeout int    `env:"OLLAMA_SERVER_PULL_MODELS_TIMEOUT" envDefault:"600"`
 	OllamaServerPullModelsEnabled bool   `env:"OLLAMA_SERVER_PULL_MODELS_ENABLED" envDefault:"false"`
@@ -99,18 +103,44 @@ type Config struct {
 	GeminiAPIKey    string `env:"GEMINI_API_KEY"`
 	GeminiServerURL string `env:"GEMINI_SERVER_URL" envDefault:"https://generativelanguage.googleapis.com"`
 
-	// Bedrock
+	// AWS Bedrock LLM provider
 	BedrockRegion       string `env:"BEDROCK_REGION" envDefault:"us-east-1"`
+	BedrockDefaultAuth  bool   `env:"BEDROCK_DEFAULT_AUTH" envDefault:"false"`
+	BedrockBearerToken  string `env:"BEDROCK_BEARER_TOKEN"`
 	BedrockAccessKey    string `env:"BEDROCK_ACCESS_KEY_ID"`
 	BedrockSecretKey    string `env:"BEDROCK_SECRET_ACCESS_KEY"`
 	BedrockSessionToken string `env:"BEDROCK_SESSION_TOKEN"`
 	BedrockServerURL    string `env:"BEDROCK_SERVER_URL"`
 
+	// DeepSeek LLM provider
+	DeepSeekAPIKey    string `env:"DEEPSEEK_API_KEY"`
+	DeepSeekServerURL string `env:"DEEPSEEK_SERVER_URL" envDefault:"https://api.deepseek.com"`
+	DeepSeekProvider  string `env:"DEEPSEEK_PROVIDER"`
+
+	// GLM (Zhipu AI) provider
+	GLMAPIKey    string `env:"GLM_API_KEY"`
+	GLMServerURL string `env:"GLM_SERVER_URL" envDefault:"https://api.z.ai/api/paas/v4"`
+	GLMProvider  string `env:"GLM_PROVIDER"`
+
+	// Kimi (Moonshot AI) provider
+	KimiAPIKey    string `env:"KIMI_API_KEY"`
+	KimiServerURL string `env:"KIMI_SERVER_URL" envDefault:"https://api.moonshot.ai/v1"`
+	KimiProvider  string `env:"KIMI_PROVIDER"`
+
+	// Qwen (Tongyi Qianwen) provider
+	QwenAPIKey    string `env:"QWEN_API_KEY"`
+	QwenServerURL string `env:"QWEN_SERVER_URL" envDefault:"https://dashscope-us.aliyuncs.com/compatible-mode/v1"`
+	QwenProvider  string `env:"QWEN_PROVIDER"`
+
 	// DuckDuckGo search engine
-	DuckDuckGoEnabled bool `env:"DUCKDUCKGO_ENABLED" envDefault:"true"`
+	DuckDuckGoEnabled    bool   `env:"DUCKDUCKGO_ENABLED" envDefault:"true"`
+	DuckDuckGoRegion     string `env:"DUCKDUCKGO_REGION"`
+	DuckDuckGoSafeSearch string `env:"DUCKDUCKGO_SAFESEARCH"`
+	DuckDuckGoTimeRange  string `env:"DUCKDUCKGO_TIME_RANGE"`
 
 	// Sploitus exploit aggregator (https://sploitus.com)
-	SploitusEnabled bool `env:"SPLOITUS_ENABLED" envDefault:"true"`
+	// service under cloudflare protection, IP should have good reputation to avoid being blocked
+	SploitusEnabled bool `env:"SPLOITUS_ENABLED" envDefault:"false"`
 
 	// Google search engine
 	GoogleAPIKey string `env:"GOOGLE_API_KEY"`
@@ -145,6 +175,7 @@ type Config struct {
 	SearxngLanguage   string `env:"SEARXNG_LANGUAGE"`
 	SearxngSafeSearch string `env:"SEARXNG_SAFESEARCH" envDefault:"0"`
 	SearxngTimeRange  string `env:"SEARXNG_TIME_RANGE"`
+	SearxngTimeout    int    `env:"SEARXNG_TIMEOUT"`
 
 	// Assistant
 	AssistantUseAgents                bool `env:"ASSISTANT_USE_AGENTS" envDefault:"false"`
@@ -175,6 +206,18 @@ type Config struct {
 	GraphitiEnabled bool   `env:"GRAPHITI_ENABLED" envDefault:"false"`
 	GraphitiTimeout int    `env:"GRAPHITI_TIMEOUT" envDefault:"30"`
 	GraphitiURL     string `env:"GRAPHITI_URL"`
+
+	// Execution Monitor Detector settings
+	ExecutionMonitorEnabled        bool `env:"EXECUTION_MONITOR_ENABLED" envDefault:"false"`
+	ExecutionMonitorSameToolLimit  int  `env:"EXECUTION_MONITOR_SAME_TOOL_LIMIT" envDefault:"5"`
+	ExecutionMonitorTotalToolLimit int  `env:"EXECUTION_MONITOR_TOTAL_TOOL_LIMIT" envDefault:"10"`
+
+	// Agent execution tool calls limit
+	MaxGeneralAgentToolCalls int `env:"MAX_GENERAL_AGENT_TOOL_CALLS" envDefault:"100"`
+	MaxLimitedAgentToolCalls int `env:"MAX_LIMITED_AGENT_TOOL_CALLS" envDefault:"20"`
+
+	// Agent planning step for pentester, coder, installer
+	AgentPlanningStepEnabled bool `env:"AGENT_PLANNING_STEP_ENABLED" envDefault:"false"`
 }
 
 func NewConfig() (*Config, error) {
@@ -235,4 +278,61 @@ func ensureLicenseKey(config *Config) {
 	} else if !info.IsValid() {
 		config.LicenseKey = ""
 	}
+}
+
+// GetSecretPatterns returns a list of patterns for all secrets in the config
+func (c *Config) GetSecretPatterns() []patterns.Pattern {
+	var result []patterns.Pattern
+
+	secrets := []struct {
+		value string
+		name  string
+	}{
+		{c.DatabaseURL, "Database URL"},
+		{c.LicenseKey, "License Key"},
+		{c.CookieSigningSalt, "Cookie Salt"},
+		{c.OpenAIKey, "OpenAI Key"},
+		{c.AnthropicAPIKey, "Anthropic Key"},
+		{c.EmbeddingKey, "Embedding Key"},
+		{c.LLMServerKey, "LLM Server Key"},
+		{c.OllamaServerAPIKey, "Ollama Key"},
+		{c.GeminiAPIKey, "Gemini Key"},
+		{c.BedrockBearerToken, "Bedrock Token"},
+		{c.BedrockAccessKey, "Bedrock Access Key"},
+		{c.BedrockSecretKey, "Bedrock Secret Key"},
+		{c.BedrockSessionToken, "Bedrock Session Token"},
+		{c.DeepSeekAPIKey, "DeepSeek Key"},
+		{c.GLMAPIKey, "GLM Key"},
+		{c.KimiAPIKey, "Kimi Key"},
+		{c.QwenAPIKey, "Qwen Key"},
+		{c.GoogleAPIKey, "Google API Key"},
+		{c.GoogleCXKey, "Google CX Key"},
+		{c.OAuthGoogleClientID, "Google Client ID"},
+		{c.OAuthGoogleClientSecret, "Google Client Secret"},
+		{c.OAuthGithubClientID, "Github Client ID"},
+		{c.OAuthGithubClientSecret, "Github Client Secret"},
+		{c.TraversaalAPIKey, "Traversaal Key"},
+		{c.TavilyAPIKey, "Tavily Key"},
+		{c.PerplexityAPIKey, "Perplexity Key"},
+		{c.ProxyURL, "Proxy URL"},
+		{c.LangfusePublicKey, "Langfuse Public Key"},
+		{c.LangfuseSecretKey, "Langfuse Secret Key"},
+	}
+
+	for _, s := range secrets {
+		trimmed := strings.TrimSpace(s.value)
+		if trimmed == "" {
+			continue
+		}
+
+		// escape regex special characters
+		escaped := regexp.QuoteMeta(trimmed)
+		pattern := patterns.Pattern{
+			Name:  s.name,
+			Regex: "(?P<replace>" + escaped + ")",
+		}
+		result = append(result, pattern)
+	}
+
+	return result
 }

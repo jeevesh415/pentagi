@@ -175,6 +175,10 @@ type DefaultProvidersConfig struct {
 	Bedrock   *ProviderConfig `json:"bedrock,omitempty"`
 	Ollama    *ProviderConfig `json:"ollama,omitempty"`
 	Custom    *ProviderConfig `json:"custom,omitempty"`
+	Deepseek  *ProviderConfig `json:"deepseek,omitempty"`
+	Glm       *ProviderConfig `json:"glm,omitempty"`
+	Kimi      *ProviderConfig `json:"kimi,omitempty"`
+	Qwen      *ProviderConfig `json:"qwen,omitempty"`
 }
 
 type Flow struct {
@@ -321,6 +325,10 @@ type ProvidersModelsList struct {
 	Bedrock   []*ModelConfig `json:"bedrock,omitempty"`
 	Ollama    []*ModelConfig `json:"ollama,omitempty"`
 	Custom    []*ModelConfig `json:"custom,omitempty"`
+	Deepseek  []*ModelConfig `json:"deepseek,omitempty"`
+	Glm       []*ModelConfig `json:"glm,omitempty"`
+	Kimi      []*ModelConfig `json:"kimi,omitempty"`
+	Qwen      []*ModelConfig `json:"qwen,omitempty"`
 }
 
 type ProvidersReadinessStatus struct {
@@ -330,6 +338,10 @@ type ProvidersReadinessStatus struct {
 	Bedrock   bool `json:"bedrock"`
 	Ollama    bool `json:"ollama"`
 	Custom    bool `json:"custom"`
+	Deepseek  bool `json:"deepseek"`
+	Glm       bool `json:"glm"`
+	Kimi      bool `json:"kimi"`
+	Qwen      bool `json:"qwen"`
 }
 
 type Query struct {
@@ -454,8 +466,11 @@ type ToolsPrompts struct {
 	GetShortExecutionContext *DefaultPrompt `json:"getShortExecutionContext"`
 	ChooseDockerImage        *DefaultPrompt `json:"chooseDockerImage"`
 	ChooseUserLanguage       *DefaultPrompt `json:"chooseUserLanguage"`
-	CollectToolCallID        *DefaultPrompt `json:"collectToolCallID"`
-	DetectToolCallIDPattern  *DefaultPrompt `json:"detectToolCallIDPattern"`
+	CollectToolCallID        *DefaultPrompt `json:"collectToolCallId"`
+	DetectToolCallIDPattern  *DefaultPrompt `json:"detectToolCallIdPattern"`
+	MonitorAgentExecution    *DefaultPrompt `json:"monitorAgentExecution"`
+	PlanAgentTask            *DefaultPrompt `json:"planAgentTask"`
+	WrapAgentTask            *DefaultPrompt `json:"wrapAgentTask"`
 }
 
 type UpdateAPITokenInput struct {
@@ -691,42 +706,45 @@ func (e MessageLogType) MarshalGQL(w io.Writer) {
 type PromptType string
 
 const (
-	PromptTypePrimaryAgent          PromptType = "primary_agent"
-	PromptTypeAssistant             PromptType = "assistant"
-	PromptTypePentester             PromptType = "pentester"
-	PromptTypeQuestionPentester     PromptType = "question_pentester"
-	PromptTypeCoder                 PromptType = "coder"
-	PromptTypeQuestionCoder         PromptType = "question_coder"
-	PromptTypeInstaller             PromptType = "installer"
-	PromptTypeQuestionInstaller     PromptType = "question_installer"
-	PromptTypeSearcher              PromptType = "searcher"
-	PromptTypeQuestionSearcher      PromptType = "question_searcher"
-	PromptTypeMemorist              PromptType = "memorist"
-	PromptTypeQuestionMemorist      PromptType = "question_memorist"
-	PromptTypeAdviser               PromptType = "adviser"
-	PromptTypeQuestionAdviser       PromptType = "question_adviser"
-	PromptTypeGenerator             PromptType = "generator"
-	PromptTypeSubtasksGenerator     PromptType = "subtasks_generator"
-	PromptTypeRefiner               PromptType = "refiner"
-	PromptTypeSubtasksRefiner       PromptType = "subtasks_refiner"
-	PromptTypeReporter              PromptType = "reporter"
-	PromptTypeTaskReporter          PromptType = "task_reporter"
-	PromptTypeReflector             PromptType = "reflector"
-	PromptTypeQuestionReflector     PromptType = "question_reflector"
-	PromptTypeEnricher              PromptType = "enricher"
-	PromptTypeQuestionEnricher      PromptType = "question_enricher"
-	PromptTypeToolcallFixer         PromptType = "toolcall_fixer"
-	PromptTypeInputToolcallFixer    PromptType = "input_toolcall_fixer"
-	PromptTypeSummarizer            PromptType = "summarizer"
-	PromptTypeImageChooser          PromptType = "image_chooser"
-	PromptTypeLanguageChooser       PromptType = "language_chooser"
-	PromptTypeFlowDescriptor        PromptType = "flow_descriptor"
-	PromptTypeTaskDescriptor        PromptType = "task_descriptor"
-	PromptTypeExecutionLogs         PromptType = "execution_logs"
-	PromptTypeFullExecutionContext  PromptType = "full_execution_context"
-	PromptTypeShortExecutionContext PromptType = "short_execution_context"
-	PromptTypeToolCallIDCollector   PromptType = "tool_call_id_collector"
-	PromptTypeToolCallIDDetector    PromptType = "tool_call_id_detector"
+	PromptTypePrimaryAgent             PromptType = "primary_agent"
+	PromptTypeAssistant                PromptType = "assistant"
+	PromptTypePentester                PromptType = "pentester"
+	PromptTypeQuestionPentester        PromptType = "question_pentester"
+	PromptTypeCoder                    PromptType = "coder"
+	PromptTypeQuestionCoder            PromptType = "question_coder"
+	PromptTypeInstaller                PromptType = "installer"
+	PromptTypeQuestionInstaller        PromptType = "question_installer"
+	PromptTypeSearcher                 PromptType = "searcher"
+	PromptTypeQuestionSearcher         PromptType = "question_searcher"
+	PromptTypeMemorist                 PromptType = "memorist"
+	PromptTypeQuestionMemorist         PromptType = "question_memorist"
+	PromptTypeAdviser                  PromptType = "adviser"
+	PromptTypeQuestionAdviser          PromptType = "question_adviser"
+	PromptTypeGenerator                PromptType = "generator"
+	PromptTypeSubtasksGenerator        PromptType = "subtasks_generator"
+	PromptTypeRefiner                  PromptType = "refiner"
+	PromptTypeSubtasksRefiner          PromptType = "subtasks_refiner"
+	PromptTypeReporter                 PromptType = "reporter"
+	PromptTypeTaskReporter             PromptType = "task_reporter"
+	PromptTypeReflector                PromptType = "reflector"
+	PromptTypeQuestionReflector        PromptType = "question_reflector"
+	PromptTypeEnricher                 PromptType = "enricher"
+	PromptTypeQuestionEnricher         PromptType = "question_enricher"
+	PromptTypeToolcallFixer            PromptType = "toolcall_fixer"
+	PromptTypeInputToolcallFixer       PromptType = "input_toolcall_fixer"
+	PromptTypeSummarizer               PromptType = "summarizer"
+	PromptTypeImageChooser             PromptType = "image_chooser"
+	PromptTypeLanguageChooser          PromptType = "language_chooser"
+	PromptTypeFlowDescriptor           PromptType = "flow_descriptor"
+	PromptTypeTaskDescriptor           PromptType = "task_descriptor"
+	PromptTypeExecutionLogs            PromptType = "execution_logs"
+	PromptTypeFullExecutionContext     PromptType = "full_execution_context"
+	PromptTypeShortExecutionContext    PromptType = "short_execution_context"
+	PromptTypeToolCallIDCollector      PromptType = "tool_call_id_collector"
+	PromptTypeToolCallIDDetector       PromptType = "tool_call_id_detector"
+	PromptTypeQuestionExecutionMonitor PromptType = "question_execution_monitor"
+	PromptTypeQuestionTaskPlanner      PromptType = "question_task_planner"
+	PromptTypeTaskAssignmentWrapper    PromptType = "task_assignment_wrapper"
 )
 
 var AllPromptType = []PromptType{
@@ -766,11 +784,14 @@ var AllPromptType = []PromptType{
 	PromptTypeShortExecutionContext,
 	PromptTypeToolCallIDCollector,
 	PromptTypeToolCallIDDetector,
+	PromptTypeQuestionExecutionMonitor,
+	PromptTypeQuestionTaskPlanner,
+	PromptTypeTaskAssignmentWrapper,
 }
 
 func (e PromptType) IsValid() bool {
 	switch e {
-	case PromptTypePrimaryAgent, PromptTypeAssistant, PromptTypePentester, PromptTypeQuestionPentester, PromptTypeCoder, PromptTypeQuestionCoder, PromptTypeInstaller, PromptTypeQuestionInstaller, PromptTypeSearcher, PromptTypeQuestionSearcher, PromptTypeMemorist, PromptTypeQuestionMemorist, PromptTypeAdviser, PromptTypeQuestionAdviser, PromptTypeGenerator, PromptTypeSubtasksGenerator, PromptTypeRefiner, PromptTypeSubtasksRefiner, PromptTypeReporter, PromptTypeTaskReporter, PromptTypeReflector, PromptTypeQuestionReflector, PromptTypeEnricher, PromptTypeQuestionEnricher, PromptTypeToolcallFixer, PromptTypeInputToolcallFixer, PromptTypeSummarizer, PromptTypeImageChooser, PromptTypeLanguageChooser, PromptTypeFlowDescriptor, PromptTypeTaskDescriptor, PromptTypeExecutionLogs, PromptTypeFullExecutionContext, PromptTypeShortExecutionContext, PromptTypeToolCallIDCollector, PromptTypeToolCallIDDetector:
+	case PromptTypePrimaryAgent, PromptTypeAssistant, PromptTypePentester, PromptTypeQuestionPentester, PromptTypeCoder, PromptTypeQuestionCoder, PromptTypeInstaller, PromptTypeQuestionInstaller, PromptTypeSearcher, PromptTypeQuestionSearcher, PromptTypeMemorist, PromptTypeQuestionMemorist, PromptTypeAdviser, PromptTypeQuestionAdviser, PromptTypeGenerator, PromptTypeSubtasksGenerator, PromptTypeRefiner, PromptTypeSubtasksRefiner, PromptTypeReporter, PromptTypeTaskReporter, PromptTypeReflector, PromptTypeQuestionReflector, PromptTypeEnricher, PromptTypeQuestionEnricher, PromptTypeToolcallFixer, PromptTypeInputToolcallFixer, PromptTypeSummarizer, PromptTypeImageChooser, PromptTypeLanguageChooser, PromptTypeFlowDescriptor, PromptTypeTaskDescriptor, PromptTypeExecutionLogs, PromptTypeFullExecutionContext, PromptTypeShortExecutionContext, PromptTypeToolCallIDCollector, PromptTypeToolCallIDDetector, PromptTypeQuestionExecutionMonitor, PromptTypeQuestionTaskPlanner, PromptTypeTaskAssignmentWrapper:
 		return true
 	}
 	return false
@@ -855,6 +876,10 @@ const (
 	ProviderTypeBedrock   ProviderType = "bedrock"
 	ProviderTypeOllama    ProviderType = "ollama"
 	ProviderTypeCustom    ProviderType = "custom"
+	ProviderTypeDeepseek  ProviderType = "deepseek"
+	ProviderTypeGlm       ProviderType = "glm"
+	ProviderTypeKimi      ProviderType = "kimi"
+	ProviderTypeQwen      ProviderType = "qwen"
 )
 
 var AllProviderType = []ProviderType{
@@ -864,11 +889,15 @@ var AllProviderType = []ProviderType{
 	ProviderTypeBedrock,
 	ProviderTypeOllama,
 	ProviderTypeCustom,
+	ProviderTypeDeepseek,
+	ProviderTypeGlm,
+	ProviderTypeKimi,
+	ProviderTypeQwen,
 }
 
 func (e ProviderType) IsValid() bool {
 	switch e {
-	case ProviderTypeOpenai, ProviderTypeAnthropic, ProviderTypeGemini, ProviderTypeBedrock, ProviderTypeOllama, ProviderTypeCustom:
+	case ProviderTypeOpenai, ProviderTypeAnthropic, ProviderTypeGemini, ProviderTypeBedrock, ProviderTypeOllama, ProviderTypeCustom, ProviderTypeDeepseek, ProviderTypeGlm, ProviderTypeKimi, ProviderTypeQwen:
 		return true
 	}
 	return false

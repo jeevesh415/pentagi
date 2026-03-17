@@ -41,9 +41,12 @@ type terminal struct {
 	tlp          TermLogProvider
 }
 
-func NewTerminalTool(flowID int64, taskID, subtaskID *int64,
+func NewTerminalTool(
+	flowID int64,
+	taskID, subtaskID *int64,
 	containerID int64, containerLID string,
-	dockerClient docker.DockerClient, tlp TermLogProvider,
+	dockerClient docker.DockerClient,
+	tlp TermLogProvider,
 ) Tool {
 	return &terminal{
 		flowID:       flowID,
@@ -80,10 +83,14 @@ func (t *terminal) wrapCommandResult(ctx context.Context, args json.RawMessage, 
 }
 
 func (t *terminal) Handle(ctx context.Context, name string, args json.RawMessage) (string, error) {
-	logger := logrus.WithContext(ctx).WithFields(logrus.Fields{
+	if !t.IsAvailable() {
+		return "", fmt.Errorf("terminal is not available")
+	}
+
+	logger := logrus.WithContext(ctx).WithFields(enrichLogrusFields(t.flowID, t.taskID, t.subtaskID, logrus.Fields{
 		"tool": name,
 		"args": string(args),
-	})
+	}))
 
 	switch name {
 	case TerminalToolName:
@@ -174,9 +181,10 @@ func (t *terminal) ExecCommand(
 
 	if detach {
 		resultChan := make(chan execResult, 1)
+		detachedCtx := context.WithoutCancel(ctx)
 
 		go func() {
-			output, err := t.getExecResult(ctx, createResp.ID, timeout)
+			output, err := t.getExecResult(detachedCtx, createResp.ID, timeout)
 			resultChan <- execResult{output: output, err: err}
 		}()
 
@@ -297,7 +305,7 @@ func (t *terminal) ReadFile(ctx context.Context, flowID int64, path string) (str
 		if stats.Mode.IsDir() {
 			buffer.WriteString("--------------------------------------------------\n")
 			buffer.WriteString(
-				fmt.Sprintf("'%s' file content (with size %d bytes) keeps bellow:\n",
+				fmt.Sprintf("'%s' file content (with size %d bytes) shown below:\n",
 					tarHeader.Name, tarHeader.Size,
 				),
 			)

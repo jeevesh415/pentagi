@@ -246,9 +246,13 @@ export type DefaultProvidersConfig = {
     anthropic: ProviderConfig;
     bedrock?: Maybe<ProviderConfig>;
     custom?: Maybe<ProviderConfig>;
+    deepseek?: Maybe<ProviderConfig>;
     gemini?: Maybe<ProviderConfig>;
+    glm?: Maybe<ProviderConfig>;
+    kimi?: Maybe<ProviderConfig>;
     ollama?: Maybe<ProviderConfig>;
     openai: ProviderConfig;
+    qwen?: Maybe<ProviderConfig>;
 };
 
 export type Flow = {
@@ -515,11 +519,13 @@ export enum PromptType {
     QuestionAdviser = 'question_adviser',
     QuestionCoder = 'question_coder',
     QuestionEnricher = 'question_enricher',
+    QuestionExecutionMonitor = 'question_execution_monitor',
     QuestionInstaller = 'question_installer',
     QuestionMemorist = 'question_memorist',
     QuestionPentester = 'question_pentester',
     QuestionReflector = 'question_reflector',
     QuestionSearcher = 'question_searcher',
+    QuestionTaskPlanner = 'question_task_planner',
     Refiner = 'refiner',
     Reflector = 'reflector',
     Reporter = 'reporter',
@@ -528,6 +534,7 @@ export enum PromptType {
     SubtasksGenerator = 'subtasks_generator',
     SubtasksRefiner = 'subtasks_refiner',
     Summarizer = 'summarizer',
+    TaskAssignmentWrapper = 'task_assignment_wrapper',
     TaskDescriptor = 'task_descriptor',
     TaskReporter = 'task_reporter',
     ToolCallIdCollector = 'tool_call_id_collector',
@@ -591,9 +598,13 @@ export enum ProviderType {
     Anthropic = 'anthropic',
     Bedrock = 'bedrock',
     Custom = 'custom',
+    Deepseek = 'deepseek',
     Gemini = 'gemini',
+    Glm = 'glm',
+    Kimi = 'kimi',
     Ollama = 'ollama',
     Openai = 'openai',
+    Qwen = 'qwen',
 }
 
 export type ProviderUsageStats = {
@@ -612,18 +623,26 @@ export type ProvidersModelsList = {
     anthropic: Array<ModelConfig>;
     bedrock?: Maybe<Array<ModelConfig>>;
     custom?: Maybe<Array<ModelConfig>>;
+    deepseek?: Maybe<Array<ModelConfig>>;
     gemini: Array<ModelConfig>;
+    glm?: Maybe<Array<ModelConfig>>;
+    kimi?: Maybe<Array<ModelConfig>>;
     ollama?: Maybe<Array<ModelConfig>>;
     openai: Array<ModelConfig>;
+    qwen?: Maybe<Array<ModelConfig>>;
 };
 
 export type ProvidersReadinessStatus = {
     anthropic: Scalars['Boolean']['output'];
     bedrock: Scalars['Boolean']['output'];
     custom: Scalars['Boolean']['output'];
+    deepseek: Scalars['Boolean']['output'];
     gemini: Scalars['Boolean']['output'];
+    glm: Scalars['Boolean']['output'];
+    kimi: Scalars['Boolean']['output'];
     ollama: Scalars['Boolean']['output'];
     openai: Scalars['Boolean']['output'];
+    qwen: Scalars['Boolean']['output'];
 };
 
 export type Query = {
@@ -985,13 +1004,16 @@ export type ToolcallsStats = {
 export type ToolsPrompts = {
     chooseDockerImage: DefaultPrompt;
     chooseUserLanguage: DefaultPrompt;
-    collectToolCallID: DefaultPrompt;
-    detectToolCallIDPattern: DefaultPrompt;
+    collectToolCallId: DefaultPrompt;
+    detectToolCallIdPattern: DefaultPrompt;
     getExecutionLogs: DefaultPrompt;
     getFlowDescription: DefaultPrompt;
     getFullExecutionContext: DefaultPrompt;
     getShortExecutionContext: DefaultPrompt;
     getTaskDescription: DefaultPrompt;
+    monitorAgentExecution: DefaultPrompt;
+    planAgentTask: DefaultPrompt;
+    wrapAgentTask: DefaultPrompt;
 };
 
 export type UpdateApiTokenInput = {
@@ -1401,6 +1423,10 @@ export type SettingsProvidersQuery = {
             bedrock: boolean;
             ollama: boolean;
             custom: boolean;
+            deepseek: boolean;
+            glm: boolean;
+            kimi: boolean;
+            qwen: boolean;
         };
         default: {
             openai: ProviderConfigFragmentFragment;
@@ -1409,6 +1435,10 @@ export type SettingsProvidersQuery = {
             bedrock?: ProviderConfigFragmentFragment | null;
             ollama?: ProviderConfigFragmentFragment | null;
             custom?: ProviderConfigFragmentFragment | null;
+            deepseek?: ProviderConfigFragmentFragment | null;
+            glm?: ProviderConfigFragmentFragment | null;
+            kimi?: ProviderConfigFragmentFragment | null;
+            qwen?: ProviderConfigFragmentFragment | null;
         };
         userDefined?: Array<ProviderConfigFragmentFragment> | null;
         models: {
@@ -1418,6 +1448,10 @@ export type SettingsProvidersQuery = {
             bedrock?: Array<ModelConfigFragmentFragment> | null;
             ollama?: Array<ModelConfigFragmentFragment> | null;
             custom?: Array<ModelConfigFragmentFragment> | null;
+            deepseek?: Array<ModelConfigFragmentFragment> | null;
+            glm?: Array<ModelConfigFragmentFragment> | null;
+            kimi?: Array<ModelConfigFragmentFragment> | null;
+            qwen?: Array<ModelConfigFragmentFragment> | null;
         };
     };
 };
@@ -1452,8 +1486,11 @@ export type SettingsPromptsQuery = {
                 getShortExecutionContext: DefaultPromptFragmentFragment;
                 chooseDockerImage: DefaultPromptFragmentFragment;
                 chooseUserLanguage: DefaultPromptFragmentFragment;
-                collectToolCallID: DefaultPromptFragmentFragment;
-                detectToolCallIDPattern: DefaultPromptFragmentFragment;
+                collectToolCallId: DefaultPromptFragmentFragment;
+                detectToolCallIdPattern: DefaultPromptFragmentFragment;
+                monitorAgentExecution: DefaultPromptFragmentFragment;
+                planAgentTask: DefaultPromptFragmentFragment;
+                wrapAgentTask: DefaultPromptFragmentFragment;
             };
         };
         userDefined?: Array<UserPromptFragmentFragment> | null;
@@ -2546,6 +2583,10 @@ export const SettingsProvidersDocument = gql`
                 bedrock
                 ollama
                 custom
+                deepseek
+                glm
+                kimi
+                qwen
             }
             default {
                 openai {
@@ -2564,6 +2605,18 @@ export const SettingsProvidersDocument = gql`
                     ...providerConfigFragment
                 }
                 custom {
+                    ...providerConfigFragment
+                }
+                deepseek {
+                    ...providerConfigFragment
+                }
+                glm {
+                    ...providerConfigFragment
+                }
+                kimi {
+                    ...providerConfigFragment
+                }
+                qwen {
                     ...providerConfigFragment
                 }
             }
@@ -2587,6 +2640,18 @@ export const SettingsProvidersDocument = gql`
                     ...modelConfigFragment
                 }
                 custom {
+                    ...modelConfigFragment
+                }
+                deepseek {
+                    ...modelConfigFragment
+                }
+                glm {
+                    ...modelConfigFragment
+                }
+                kimi {
+                    ...modelConfigFragment
+                }
+                qwen {
                     ...modelConfigFragment
                 }
             }
@@ -2782,10 +2847,19 @@ export const SettingsPromptsDocument = gql`
                     chooseUserLanguage {
                         ...defaultPromptFragment
                     }
-                    collectToolCallID {
+                    collectToolCallId {
                         ...defaultPromptFragment
                     }
-                    detectToolCallIDPattern {
+                    detectToolCallIdPattern {
+                        ...defaultPromptFragment
+                    }
+                    monitorAgentExecution {
+                        ...defaultPromptFragment
+                    }
+                    planAgentTask {
+                        ...defaultPromptFragment
+                    }
+                    wrapAgentTask {
                         ...defaultPromptFragment
                     }
                 }

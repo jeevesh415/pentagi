@@ -5,6 +5,13 @@ export SERVER_SSL_CRT=${SERVER_SSL_CRT:-ssl/server.crt}
 SERVER_SSL_CSR=ssl/service.csr
 SERVER_SSL_CA_KEY=ssl/service_ca.key
 SERVER_SSL_CA_CRT=ssl/service_ca.crt
+OLLAMA_KEY=/root/.ollama/id_ed25519
+
+if [ ! -f "$OLLAMA_KEY" ]; then
+    ssh-keygen -t ed25519 -N "" -f $OLLAMA_KEY
+    chmod 600 $OLLAMA_KEY
+    echo "Ollama signing key generated and saved to $OLLAMA_KEY"
+fi
 
 if [ -f "$SERVER_SSL_KEY" ] && [ -f "$SERVER_SSL_CRT" ]; then
     echo "service ssl crt and key already exist"
@@ -39,7 +46,11 @@ elif [ "$SERVER_USE_SSL" = "true" ]; then
     cat ${SERVER_SSL_CA_CRT} >> ${SERVER_SSL_CRT}
 
     chmod g+r ${SERVER_SSL_KEY}
-    chmod g+r ${SERVER_SSL_CA_KEY}
+
+    # Remove CA private key and CSR after signing -- they are no longer
+    # needed at runtime and leaving them on disk increases the attack
+    # surface if the container filesystem is compromised.
+    rm -f ${SERVER_SSL_CA_KEY} ${SERVER_SSL_CSR} ssl/service_ca.srl
 fi
 
 exec "$@"
